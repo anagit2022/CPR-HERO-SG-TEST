@@ -180,6 +180,32 @@ display: flex;
     z-index: 10; 
 }
 
+/* The two live "practice again" screens (Raja & Rani) place the
+   practice-again button and the check-progress button together in
+   a centered row so they never overlap. This overrides the
+   absolute positioning above for just these two buttons. */
+.sealedActionsRow {
+  position: absolute;
+  bottom: 12vh;
+  left: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  z-index: 10;
+}
+.sealedActionsRow #practiceagainbtnraja,
+.sealedActionsRow #practiceagainbtnrani {
+  position: static;
+  bottom: auto;
+  right: auto;
+  width: 45%;
+  max-width: 160px;
+}
+
 .screen {
   display: none;
 }
@@ -424,6 +450,305 @@ display: flex; /* show first screen by default */
     cursor: not-allowed;
     opacity: 0.5;
 }
+
+/* ========================================
+   CHECK PROGRESS BUTTON
+   (sits next to the "Practice Again" button)
+   ======================================== */
+.checkProgressBtn {
+  position: static;
+  width: 45%;
+  max-width: 160px;
+  padding: 14px 10px;
+  background: #FFFFFF;
+  color: #F25C3B;
+  font-family: 'Albert Sans', sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  text-align: center;
+  border-radius: 30px;
+  cursor: pointer;
+  user-select: none;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+  transition: transform 0.15s ease;
+  box-sizing: border-box;
+}
+
+.checkProgressBtn:active {
+  transform: scale(0.96);
+}
+
+/* ========================================
+   PROGRESS SCREEN
+   ======================================== */
+#progressScreen {
+  padding: 0;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: flex-start;
+  z-index: 999;      /* sit above anything left over from a practice session */
+  background: #F25C3B;  /* explicit, opaque — nothing behind should ever show through */
+}
+
+.progressHeading {
+  position: absolute;
+  top: 6vh;
+  left: 8vw;
+  width: 84vw;
+  color: #FFF;
+  font-family: "Albert Sans", sans-serif;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.progressLatestCard {
+  position: absolute;
+  top: 24vh;
+  left: 8vw;
+  width: 84vw;
+  max-width: 340px;
+  background: #fff;
+  border-radius: 18px;
+  padding: 18px 22px;
+  box-sizing: border-box;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+}
+
+.progressLatestLabel {
+  font-family: 'Albert Sans', sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  color: #222;
+  margin-bottom: 6px;
+}
+
+.progressLatestValue {
+  font-family: 'Albert Sans', sans-serif;
+  font-size: 34px;
+  font-weight: 700;
+  color: #038660;
+}
+
+.progressLatestValue .progressLatestDenom {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.progressChartWrap {
+  position: absolute;
+  top: 42vh;
+  left: 8vw;
+  width: 84vw;
+  max-width: 340px;
+  height: 40vh;
+  max-height: 300px;
+}
+
+.progressChartYLabel {
+  position: absolute;
+  left: -2px;
+  top: 0;
+  bottom: 20px;
+  width: 20px;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  text-align: center;
+  color: rgba(255, 255, 255, 0.9);
+  font-family: 'Albert Sans', sans-serif;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.progressChartXLabel {
+  position: absolute;
+  left: 26px;
+  right: 0;
+  bottom: 0;
+  height: 18px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.9);
+  font-family: 'Albert Sans', sans-serif;
+  font-size: 12px;
+}
+
+.progressChartScroll {
+  position: absolute;
+  left: 26px;
+  right: 0;
+  top: 0;
+  bottom: 20px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;      /* Firefox */
+}
+.progressChartScroll::-webkit-scrollbar {
+  display: none;              /* Chrome / Safari */
+}
+
+.progressChartTrack {
+  position: relative;
+  touch-action: pan-x;
+}
+
+.chartBaseline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1.5px;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.chartAxisVertical {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1.5px;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.chartStem {
+  position: absolute;
+  width: 2px;
+  background: rgba(255, 255, 255, 0.85);
+  transform: translateX(-50%);
+}
+
+.chartPoint {
+  position: absolute;
+  transform: translate(-50%, 50%);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-family: 'Albert Sans', sans-serif;
+  font-weight: 700;
+  font-size: 10px;
+  cursor: pointer;
+  user-select: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.chartDateLabel {
+  position: absolute;
+  transform: translateX(-50%);
+  color: rgba(255, 255, 255, 0.85);
+  font-family: 'Albert Sans', sans-serif;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.chartAttemptLabel {
+  position: absolute;
+  transform: translateX(-50%);
+  color: rgba(255, 255, 255, 0.9);
+  font-family: 'Albert Sans', sans-serif;
+  font-size: 11px;
+}
+
+/* Left/right nudge buttons — shown only when there are enough
+   attempts that the chart actually overflows and needs scrolling. */
+.progressChartArrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  color: #F25C3B;
+  font-size: 20px;
+  font-weight: 700;
+  display: none;   /* toggled to flex by JS when scrollable */
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  z-index: 5;
+}
+.progressChartArrowLeft { left: -6px; }
+.progressChartArrowRight { right: -6px; }
+
+/* Tooltip that appears when a score circle is tapped, showing the
+   exact date/time that attempt was recorded. */
+.progressTooltip {
+  position: absolute;
+  display: none;
+  background: #222;
+  color: #fff;
+  font-family: 'Albert Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 8px;
+  white-space: nowrap;
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+  z-index: 6;
+}
+.progressTooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: #222;
+}
+
+.progressNoData {
+  position: absolute;
+  top: 42vh;
+  left: 8vw;
+  width: 84vw;
+  max-width: 340px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.85);
+  font-family: 'Albert Sans', sans-serif;
+  font-size: 15px;
+}
+
+.progressFooter {
+  position: absolute;
+  bottom: 4vh;
+  left: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.progressBackBtn {
+  background: #B6DB54;
+  color: #7C9C3D;
+  padding: 14px 46px;
+  border-radius: 30px;
+  font-family: 'Albert Sans', sans-serif;
+  font-weight: 700;
+  font-size: 16px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.progressClearBtn {
+  color: rgba(255, 255, 255, 0.85);
+  font-family: 'Albert Sans', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+  user-select: none;
+}
+
 #p5Screen {
       width: 100vw;
       height: 100vh;
