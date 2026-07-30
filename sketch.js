@@ -15,6 +15,10 @@ let lastTouchTime = 0;
 // log into google sheets - google app script
 const scriptURL = "https://script.google.com/macros/s/AKfycbxNVQSYjwBKOwIT8stzs-7oS4mOBfTWHkVzP_e0tr3QRfTm4_imeTxxDbV9qVfJclPLKg/exec";
 let sessionLogged = false;
+// progress tracking (compression score history, saved to localStorage)
+let scoreLoggedForAttempt = false;  // guards against logging the same attempt multiple times
+const CHART_ATTEMPT_STEP = 92;      // fixed px spacing between attempts in the progress chart
+const PROGRESS_NAME = "Friend";     // this version has no name entry, so all attempts are logged under one bucket
 // play screen
 let cheekOpacity = 40;
 let lipOpacity = 120;
@@ -67,13 +71,11 @@ function preload(){
   dial = loadSound("9aud.mp3");
   addspeakeraud = loadSound("ElevenLabs_2025-11-04T12_00_41_Alice_pre_sp100_s50_sb75_v3.mp3");
   victimaud = loadSound("ElevenLabs_2025-11-04T17_32_18_Alice_pre_sp100_s50_sb75_v3.mp3");
-
   cprC1aud = loadSound("ElevenLabs_2025-06-28T05_17_33_Alice_pre_sp100_s50_sb75_v3.mp3");
   cprC2aud = loadSound("ElevenLabs_2025-06-25T03_15_33_Alice_pre_sp100_s50_sb75_v3.mp3");
   cprC3aud = loadSound("ElevenLabs_2025-06-16T00_04_57_Alice_pre_sp100_s50_sb75_v3.mp3");
   cprC4aud = loadSound("ElevenLabs_2025-06-25T03_12_37_Alice_pre_sp100_s50_sb75_v3.mp3");
   cprBeginaud = loadSound("ElevenLabs_2025-11-05T03_21_18_Alice_pre_sp100_s50_sb75_v3.mp3");
-
   press_music = loadSound("mixkit-message-pop-alert-2354.mp3");
   winaud = loadSound("mixkit-fairy-arcade-sparkle-866.wav");
   aedaud = loadSound("ElevenLabs_2025-06-16T12_58_21_Alice_pre_sp100_s50_sb75_v3.mp3");
@@ -84,7 +86,6 @@ function preload(){
   promisefltaud = loadSound("ElevenLabs_2025-12-10T02_40_37_Alice_pre_sp100_s50_sb75_v3.mp3");
   promisesltaud = loadSound("ElevenLabs_2025-12-10T02_41_38_Alice_pre_sp100_s50_sb75_v3.mp3");
 }
-
 function setup() {
   breath_no = floor(random(11));
   console.log(breath_no);
@@ -94,7 +95,6 @@ function setup() {
   //mic.start();
   imageMode(CENTER);
 }
-
 // =====================================================
 // COMPRESSION SCORE BADGE HELPER
 // Calculates score from good_compression / maxTotalCompressions
@@ -104,10 +104,8 @@ function setup() {
 function showCompressionScore() {
   // 1. Calculate absolute difference from the target goal
   let diff = Math.abs(maxTotalCompressions - good_compression);
-
   // 2. Set color based on difference (consistent across ALL outcomes)
   let badgeColor = (diff <= 10) ? "#038660" : "#FF5058";
-
   // 3. Array of all badge element IDs across your web app
   const allBadges = [
     // Late screens
@@ -128,13 +126,11 @@ function showCompressionScore() {
     { badge: "aedRajaScoreBadge", value: "aedRajaScoreValue", denom: "aedRajaScoreDenom" },
     { badge: "aedRaniScoreBadge", value: "aedRaniScoreValue", denom: "aedRaniScoreDenom" }
   ];
-
   // 4. Update every badge that exists on the page
   allBadges.forEach(item => {
     let badgeEl = document.getElementById(item.badge);
     let valueEl = document.getElementById(item.value);
     let denomEl = document.getElementById(item.denom);
-
     if (badgeEl) {
       badgeEl.style.backgroundColor = badgeColor;
     }
@@ -145,8 +141,203 @@ function showCompressionScore() {
       denomEl.textContent = "/" + maxTotalCompressions;
     }
   });
+
+  // 5. Save this attempt to the progress history — only once, even though
+  //    this function keeps getting called every frame for as long as the
+  //    outcome screen stays on screen.
+  if (!scoreLoggedForAttempt) {
+    logProgress();
+    scoreLoggedForAttempt = true;
+  }
 }
 
+// =====================================================
+// PROGRESS TRACKING
+// Saves every attempt's compression score to localStorage
+// so it can be graphed later on the "My Progress" screen.
+// =====================================================
+function logProgress() {
+  try {
+    const record = {
+      name: PROGRESS_NAME,
+      score: good_compression,
+      max: maxTotalCompressions,
+      percent: maxTotalCompressions > 0
+        ? Math.round((good_compression / maxTotalCompressions) * 100)
+        : 0,
+      date: new Date().toISOString()
+    };
+    const log = JSON.parse(localStorage.getItem("cprProgressLog") || "[]");
+    log.push(record);
+    localStorage.setItem("cprProgressLog", JSON.stringify(log));
+  } catch (e) {
+    console.error("Could not save progress:", e);
+  }
+}
+
+function getUserProgress() {
+  try {
+    const log = JSON.parse(localStorage.getItem("cprProgressLog") || "[]");
+    return log.filter(r => r.name === PROGRESS_NAME);
+  } catch (e) {
+    return [];
+  }
+}
+
+// Relative label shown above each point ("Today", "Yesterday", "3 days ago"...)
+function formatRelativeLabel(dateStr) {
+  const d = new Date(dateStr);
+  const startOfDay = (dt) => new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+  const diffDays = Math.round((startOfDay(new Date()) - startOfDay(d)) / 86400000);
+  if (diffDays <= 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return diffDays + " days ago";
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+// Full date/time shown in the tooltip when a point is tapped
+function formatFullDateTime(dateStr) {
+  const d = new Date(dateStr);
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) +
+    " · " + d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+const CHART_BASELINE_OFFSET = 20; // px reserved below the baseline for attempt numbers
+const CHART_TOP_GAP = 34;         // px reserved above the tallest point for its date label
+const CHART_POINT_RADIUS = 22;    // px, half the circle's 44px diameter
+
+// Builds a lollipop chart of the compression accuracy (normalized to a
+// score out of 100) for each practice attempt, using plain positioned DOM
+// elements (not canvas) so it scrolls, sizes, and hit-tests reliably
+// across devices. Attempts are spaced at a fixed width so points never
+// overlap — the track just grows wider and becomes horizontally
+// scrollable instead.
+function renderProgressChart() {
+  const records = getUserProgress();
+  const track = document.getElementById("progressChartTrack");
+  const scrollWrap = document.getElementById("progressChartScroll");
+  const chartWrap = document.getElementById("progressChartWrap");
+  const noDataEl = document.getElementById("progressNoData");
+  const latestScoreEl = document.getElementById("progressLatestScore");
+  const latestDenomEl = document.getElementById("progressLatestDenom");
+  const arrowLeft = document.getElementById("progressChartArrowLeft");
+  const arrowRight = document.getElementById("progressChartArrowRight");
+  const tooltip = document.getElementById("progressTooltip");
+  const yLabel = document.querySelector(".progressChartYLabel");
+  const xLabel = document.querySelector(".progressChartXLabel");
+
+  if (tooltip) tooltip.style.display = "none";
+
+  // Latest score card always reflects the most recent attempt — shown as
+  // the actual good compressions out of that session's target, not a
+  // normalized-to-100 percentage.
+  if (latestScoreEl) {
+    const latest = records.length ? records[records.length - 1] : null;
+    latestScoreEl.textContent = latest ? latest.score : 0;
+    if (latestDenomEl) latestDenomEl.textContent = "/" + (latest ? latest.max : 0);
+  }
+
+  if (!track || !scrollWrap || !chartWrap) return;
+  track.innerHTML = "";
+
+  if (records.length === 0) {
+    scrollWrap.style.display = "none";
+    if (yLabel) yLabel.style.display = "none";
+    if (xLabel) xLabel.style.display = "none";
+    if (arrowLeft) arrowLeft.style.display = "none";
+    if (arrowRight) arrowRight.style.display = "none";
+    if (noDataEl) noDataEl.style.display = "block";
+    return;
+  }
+  scrollWrap.style.display = "block";
+  if (yLabel) yLabel.style.display = "flex";
+  if (xLabel) xLabel.style.display = "block";
+  if (noDataEl) noDataEl.style.display = "none";
+
+  const wrapRect = chartWrap.getBoundingClientRect();
+  const trackHeight = Math.max(Math.round(wrapRect.height) - CHART_BASELINE_OFFSET, 140);
+  const scrollVisibleWidth = Math.round(wrapRect.width) - 26; // minus the y-label gutter
+  const contentWidth = Math.max(scrollVisibleWidth, CHART_ATTEMPT_STEP * records.length + 20);
+
+  track.style.width = contentWidth + "px";
+  track.style.height = trackHeight + "px";
+
+  const baseline = document.createElement("div");
+  baseline.className = "chartBaseline";
+  baseline.style.bottom = CHART_BASELINE_OFFSET + "px";
+  track.appendChild(baseline);
+
+  const axisV = document.createElement("div");
+  axisV.className = "chartAxisVertical";
+  axisV.style.bottom = CHART_BASELINE_OFFSET + "px";
+  axisV.style.top = "0px";
+  track.appendChild(axisV);
+
+  const usableHeight = Math.max(trackHeight - CHART_BASELINE_OFFSET - CHART_TOP_GAP - CHART_POINT_RADIUS, 40);
+
+  records.forEach((r, i) => {
+    const x = CHART_ATTEMPT_STEP * i + CHART_ATTEMPT_STEP / 2;
+    // Height on the chart is still normalized (0–100%) so attempts with
+    // different targets sit on the same visual scale, but everything the
+    // learner actually reads shows their real good_compression/maxTotalCompressions.
+    const scoreOffset = usableHeight * (Math.min(r.percent, 100) / 100);
+    const centerBottom = CHART_BASELINE_OFFSET + CHART_POINT_RADIUS + scoreOffset;
+    const diff = Math.abs(r.max - r.score);
+    const color = diff <= 10 ? "#038660" : "#FF5058";
+
+    const stem = document.createElement("div");
+    stem.className = "chartStem";
+    stem.style.left = x + "px";
+    stem.style.bottom = CHART_BASELINE_OFFSET + "px";
+    stem.style.height = (centerBottom - CHART_BASELINE_OFFSET) + "px";
+    track.appendChild(stem);
+
+    const point = document.createElement("div");
+    point.className = "chartPoint";
+    point.style.left = x + "px";
+    point.style.bottom = centerBottom + "px";
+    point.style.background = color;
+    point.textContent = r.score + "/" + r.max;
+    const onTap = (e) => { e.preventDefault(); showChartTooltip(point, r); };
+    point.addEventListener("click", onTap);
+    point.addEventListener("touchend", onTap);
+    track.appendChild(point);
+
+    const dateLabel = document.createElement("div");
+    dateLabel.className = "chartDateLabel";
+    dateLabel.style.left = x + "px";
+    dateLabel.style.bottom = (centerBottom + CHART_POINT_RADIUS + 6) + "px";
+    dateLabel.textContent = formatRelativeLabel(r.date);
+    track.appendChild(dateLabel);
+
+    const attemptLabel = document.createElement("div");
+    attemptLabel.className = "chartAttemptLabel";
+    attemptLabel.style.left = x + "px";
+    attemptLabel.style.bottom = "2px";
+    attemptLabel.textContent = i + 1;
+    track.appendChild(attemptLabel);
+  });
+
+  const overflowing = contentWidth > scrollVisibleWidth + 1;
+  if (arrowLeft) arrowLeft.style.display = overflowing ? "flex" : "none";
+  if (arrowRight) arrowRight.style.display = overflowing ? "flex" : "none";
+
+  // Start scrolled to the most recent attempt so it's visible by default
+  scrollWrap.scrollLeft = scrollWrap.scrollWidth;
+}
+
+// Shows a small tooltip with the exact date/time above a tapped point
+function showChartTooltip(pointEl, record) {
+  const tooltip = document.getElementById("progressTooltip");
+  const chartWrap = document.getElementById("progressChartWrap");
+  if (!tooltip || !chartWrap) return;
+  const pointRect = pointEl.getBoundingClientRect();
+  const wrapRect = chartWrap.getBoundingClientRect();
+  tooltip.textContent = formatFullDateTime(record.date) + " · " + record.score + "/" + record.max;
+  tooltip.style.left = (pointRect.left - wrapRect.left + pointRect.width / 2) + "px";
+  tooltip.style.top = (pointRect.top - wrapRect.top) + "px";
+  tooltip.style.display = "block";
+}
 window.onload = () => {
     // --- Screen Element Definitions ---
     const begin1 = document.getElementById("begin1");
@@ -219,7 +410,15 @@ window.onload = () => {
     promiselateslowrajapress = document.getElementById("promiselateslowrajapress");
     promiselateslowrani = document.getElementById("promiselateslowrani");
     promiselateslowranipress = document.getElementById("promiselateslowranipress");
-
+    // --- Progress screen elements ---
+    const progressScreen = document.getElementById("progressScreen");
+    const checkProgressBtnRaja = document.getElementById("checkProgressBtnRaja");
+    const checkProgressBtnRani = document.getElementById("checkProgressBtnRani");
+    const progressBackBtn = document.getElementById("progressBackBtn");
+    const progressClearBtn = document.getElementById("progressClearBtn");
+    const progressChartScroll = document.getElementById("progressChartScroll");
+    const progressChartArrowLeft = document.getElementById("progressChartArrowLeft");
+    const progressChartArrowRight = document.getElementById("progressChartArrowRight");
     // --- Button Element Definitions ---
     const beginBtn = document.getElementById("beginBtn");
     const beginBubBtn = document.getElementById("beginBubBtn");
@@ -264,7 +463,6 @@ window.onload = () => {
     const practiceagainbtnrani = document.getElementById("practiceagainbtnrani");
     const wpromisepress = document.getElementById("wpromisepress");
     const wranipromisepress = document.getElementById("wranipromisepress");
-
     // ========================================
     // DIAL PAD LOGIC
     // ========================================
@@ -280,7 +478,6 @@ window.onload = () => {
     const dialBtn8 = document.getElementById("dialBtn8");
     const dialBtn9 = document.getElementById("dialBtn9");
     const deleteBtnDial = document.getElementById("deleteBtnDial"); 
-
     const checkCallButtonState = () => {
         if (dialedNumber === "995") {
             callBtn.disabled = false;
@@ -290,7 +487,6 @@ window.onload = () => {
             callBtn.style.opacity = 0.5; 
         }
     };
-
     const addDigit = (digit) => {
         dial.play();
         if (dialedNumber.length < 3) { 
@@ -300,7 +496,6 @@ window.onload = () => {
             checkCallButtonState(); 
         }
     };
-
     const deleteDigit = (e) => {
         if (e) e.preventDefault();
         dialedNumber = dialedNumber.slice(0, -1);
@@ -312,7 +507,6 @@ window.onload = () => {
         }
         checkCallButtonState(); 
     };
-
     const setupDialButton = (btnElement, digit) => {
         if (!btnElement) return;
         const handler = (e) => {
@@ -322,7 +516,6 @@ window.onload = () => {
         btnElement.addEventListener('click', handler);
         btnElement.addEventListener('touchstart', handler);
     };
-
     setupDialButton(dialBtn0, '0');
     setupDialButton(dialBtn1, '1');
     setupDialButton(dialBtn2, '2');
@@ -333,14 +526,11 @@ window.onload = () => {
     setupDialButton(dialBtn7, '7');
     setupDialButton(dialBtn8, '8');
     setupDialButton(dialBtn9, '9');
-
     deleteBtnDial.addEventListener('click', deleteDigit);
     deleteBtnDial.addEventListener('touchstart', deleteDigit);
-
     checkCallButtonState();
     dialDisplay.textContent = "995";
     dialDisplay.classList.add("empty"); 
-
     // ========================================
     // P5.js Canvas Functions
     // ========================================
@@ -351,16 +541,13 @@ window.onload = () => {
             canvasActive = true;
         }
     }
-
     function removeCanvas() {
         if (canvasActive) {
             canvas.remove();
             canvasActive = false;
         }
     }
-
     // --- Event Listeners ---
-
     const handleBegin = () => {
         userStartAudio();
         mic.start();
@@ -369,7 +556,6 @@ window.onload = () => {
     };
     beginBtn.onclick = handleBegin;
     beginBtn.addEventListener('touchstart', handleBegin);
-
     const handleBubbleShortcut = () => {
         userStartAudio();
         [t1, t2, t3, t4, t5, t6].forEach(t => clearTimeout(t));
@@ -384,7 +570,6 @@ window.onload = () => {
     };
     beginBubBtn.onclick = handleBubbleShortcut;
     beginBubBtn.addEventListener('touchstart', handleBubbleShortcut);
-
     const handleRaja = () => {
         genderState = 1;
         console.log("Gender:", genderState);
@@ -394,7 +579,6 @@ window.onload = () => {
     };
     rajaBtn.onclick = handleRaja;
     rajaBtn.addEventListener('touchstart', handleRaja);
-
     const handleRani = () => {
         genderState = 0;
         console.log("Gender:", genderState);
@@ -404,7 +588,6 @@ window.onload = () => {
     };
     raniBtn.onclick = handleRani;
     raniBtn.addEventListener('touchstart', handleRani);
-
     const handleStart = () => {
         intro.style.display = "none";
         checkdanger.style.display = "flex";
@@ -414,7 +597,6 @@ window.onload = () => {
     };
     startBtn.onclick = handleStart;
     startBtn.addEventListener('touchstart', handleStart);
-
     const handleDyes = () => {
         checkdAudio.pause();
         checkdAudio.currentTime = 0;
@@ -433,7 +615,6 @@ window.onload = () => {
     };
     dyesBtn.onclick = handleDyes;
     dyesBtn.addEventListener('touchstart', handleDyes);
-
     const handleDno = () => {
         checkdAudio.pause();
         checkdAudio.currentTime = 0;
@@ -443,7 +624,6 @@ window.onload = () => {
     };
     dnoBtn.onclick = handleDno;
     dnoBtn.addEventListener('touchstart', handleDno);
-
     const handleNowSafe = () => {
         dnotsafeAudio.pause();
         dnotsafeAudio.currentTime = 0;
@@ -460,7 +640,6 @@ window.onload = () => {
     };
     nowsafeBtn.onclick = handleNowSafe;
     nowsafeBtn.addEventListener('touchstart', handleNowSafe);
-
     const handleCantSafe = () => {
         dnotsafeAudio.pause();
         dnotsafeAudio.currentTime = 0;
@@ -471,7 +650,6 @@ window.onload = () => {
     };
     cantsafeBtn.onclick = handleCantSafe;
     cantsafeBtn.addEventListener('touchstart', handleCantSafe);
-
     const handleNextP = () => {
         cantdsafe.pause();
         cantdsafe.currentTime = 0;
@@ -493,7 +671,6 @@ window.onload = () => {
     };
     nextpBtn.onclick = handleNextP;
     nextpBtn.addEventListener('touchstart', handleNextP);
-
     const handleDPromisePress = () => {
         promisedaud.pause();
         promisedaud.currentTime = 0;
@@ -504,7 +681,6 @@ window.onload = () => {
     };
     dpromisepress.onclick = handleDPromisePress;
     dpromisepress.addEventListener('touchstart', handleDPromisePress);
-
     const handleDRaniPromisePress = () => {
         promisedaud.pause();
         promisedaud.currentTime = 0;
@@ -515,7 +691,6 @@ window.onload = () => {
     };
     dranipromisepress.onclick = handleDRaniPromisePress;
     dranipromisepress.addEventListener('touchstart', handleDRaniPromisePress);
-
     const handleNext = () => {
         respondednextaud.play();
         awake.style.display = "none";
@@ -523,7 +698,6 @@ window.onload = () => {
     };
     nextBtn.onclick = handleNext;
     nextBtn.addEventListener('touchstart', handleNext);
-
     const handleNextPR = () => {
         responded.style.display = "none";
         promisertaud.play();
@@ -544,7 +718,6 @@ window.onload = () => {
     };
     nextprBtn.onclick = handleNextPR;
     nextprBtn.addEventListener('touchstart', handleNextPR);
-
     const handleRRaniPromisePress = () => {
         promisejingle.play();
         test.play();
@@ -554,7 +727,6 @@ window.onload = () => {
     };
     rranipromisepress.onclick = handleRRaniPromisePress;
     rranipromisepress.addEventListener('touchstart', handleRRaniPromisePress);
-
     const handleRRajaPromisePress = () => {
         promisejingle.play();
         test.play();
@@ -564,7 +736,6 @@ window.onload = () => {
     };
     rrajapromisepress.onclick = handleRRajaPromisePress;
     rrajapromisepress.addEventListener('touchstart', handleRRajaPromisePress);
-
     const handleRno = () => {
         userStartAudio();
         did_spongy_respond.pause();
@@ -591,7 +762,6 @@ window.onload = () => {
     };
     rnoBtn.onclick = handleRno;
     rnoBtn.addEventListener('touchstart', handleRno);
-
     const handleBno = () => {
         requestaedaud.play();
         checkbreathingq.style.display = "none";
@@ -599,7 +769,6 @@ window.onload = () => {
     };
     bnoBtn.onclick = handleBno;
     bnoBtn.addEventListener('touchstart', handleBno);
-
     const handleByes = () => {
         breathingtype.play();
         could_you_see_breathing.pause();
@@ -609,7 +778,6 @@ window.onload = () => {
     };
     byesBtn.onclick = handleByes;
     byesBtn.addEventListener('touchstart', handleByes);
-
     const handleNormal = () => {
         breathingtype.pause();
         breathingtype.currentTime = 0;
@@ -620,7 +788,6 @@ window.onload = () => {
     };
     normalBtn.onclick = handleNormal;
     normalBtn.addEventListener('touchstart', handleNormal);
-
     const handleAbnormal = () => {
         breathingtype.pause();
         breathingtype.currentTime = 0;
@@ -630,7 +797,6 @@ window.onload = () => {
     };
     abnormalBtn.onclick = handleAbnormal;
     abnormalBtn.addEventListener('touchstart', handleAbnormal);
-
     const handleNextV = () => {
         ifbreathnormalaud.stop();
         promisebtaud.play();
@@ -651,7 +817,6 @@ window.onload = () => {
     };
     nextvBtn.onclick = handleNextV;
     nextvBtn.addEventListener('touchstart', handleNextV);
-
     const handleBRaniPromisePress = () => {
         promisebtaud.stop();
         promisejingle.play();
@@ -661,7 +826,6 @@ window.onload = () => {
     };
     branipromisepress.onclick = handleBRaniPromisePress;
     branipromisepress.addEventListener('touchstart', handleBRaniPromisePress);
-
     const handleBrajaPromisePress = () => {
         promisejingle.play();
         test.play();
@@ -671,7 +835,6 @@ window.onload = () => {
     };
     bpromisepress.onclick = handleBrajaPromisePress;
     bpromisepress.addEventListener('touchstart', handleBrajaPromisePress);
-
     const handleNextA = () => {
         call112.play();
         requestaedaud.pause();
@@ -681,7 +844,6 @@ window.onload = () => {
     };
     nextaBtn.onclick = handleNextA;
     nextaBtn.addEventListener('touchstart', handleNextA);
-
     const handleCall = () => {
         if (callBtn.disabled) return;
         call112.pause();
@@ -693,42 +855,35 @@ window.onload = () => {
     };
     callBtn.onclick = handleCall;
     callBtn.addEventListener('touchstart', handleCall);
-
     const handleSpeaker = () => {
         call112.pause();
         call112.currentTime = 0;
         addspeaker.style.display = "none";
         addedspeaker.style.display = "flex";
-
         t1 = setTimeout(() => {
             addedspeaker.style.display = "none";
             victiminca.style.display = "flex";
             victimaud.play();
             addspeakeraud.stop();
-
             t2 = setTimeout(() => {
                 victiminca.style.display = "none";
                 cpr1.style.display = "flex";
                 cprC1aud.play();
-
                 t3 = setTimeout(() => {
                     cpr1.style.display = "none";
                     cpr2.style.display = "flex";
                     cprC2aud.play();
                     cprC1aud.stop();
-
                     t4 = setTimeout(() => {
                         cpr2.style.display = "none";
                         cpr3.style.display = "flex";
                         cprC3aud.play();
                         cprC2aud.stop();
-
                         t5 = setTimeout(() => {
                             cpr3.style.display = "none";
                             cpr4.style.display = "flex";
                             cprC4aud.play();
                             cprC3aud.stop();
-
                             t6 = setTimeout(() => {
                                 cpr4.style.display = "none";
                                 cpr5.style.display = "flex";
@@ -743,7 +898,6 @@ window.onload = () => {
     };
     speakerbtn.onclick = handleSpeaker;
     speakerbtn.addEventListener('touchstart', handleSpeaker);
-
     const stopAllCPRAudio = () => {
         victimaud.stop();
         addspeakeraud.stop();
@@ -753,7 +907,6 @@ window.onload = () => {
         cprC4aud.stop();
         [t1, t2, t3, t4, t5, t6].forEach(t => clearTimeout(t));
     };
-
     const handleNextC1 = () => {
         clearTimeout(t1);
         stopAllCPRAudio();
@@ -763,7 +916,6 @@ window.onload = () => {
     };
     nextc1.onclick = handleNextC1;
     nextc1.addEventListener('touchstart', handleNextC1);
-
     const handleNextC2 = () => {
         clearTimeout(t1); clearTimeout(t2);
         stopAllCPRAudio();
@@ -773,7 +925,6 @@ window.onload = () => {
     };
     nextc2.onclick = handleNextC2;
     nextc2.addEventListener('touchstart', handleNextC2);
-
     const handleNextC3 = () => {
         clearTimeout(t1); clearTimeout(t2); clearTimeout(t3);
         stopAllCPRAudio();
@@ -783,7 +934,6 @@ window.onload = () => {
     };
     nextc3.onclick = handleNextC3;
     nextc3.addEventListener('touchstart', handleNextC3);
-
     const handleNextC4 = () => {
         clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4);
         stopAllCPRAudio();
@@ -793,7 +943,6 @@ window.onload = () => {
     };
     nextc4.onclick = handleNextC4;
     nextc4.addEventListener('touchstart', handleNextC4);
-
     const handleStartCPR = () => {
         clearTimeout(t1); clearTimeout(t2); clearTimeout(t3);
         clearTimeout(t4); clearTimeout(t5);
@@ -805,9 +954,7 @@ window.onload = () => {
     };
     startcpr.onclick = handleStartCPR;
     startcpr.addEventListener('touchstart', handleStartCPR);
-
     // --- End Screen Buttons ---
-
     const handleNextWin = () => {
         win.style.display = "none";
         promisewtaud.play();
@@ -827,7 +974,6 @@ window.onload = () => {
     };
     nextwinBtn.onclick = handleNextWin;
     nextwinBtn.addEventListener('touchstart', handleNextWin);
-
     const handleWRaniPromisePress = () => {
         promisewtaud.stop();
         promisejingle.play();
@@ -837,7 +983,6 @@ window.onload = () => {
     };
     wranipromisepress.onclick = handleWRaniPromisePress;
     wranipromisepress.addEventListener('touchstart', handleWRaniPromisePress);
-
     const handleWPromisePress = () => {
         promisewtaud.stop();
         promisejingle.play();
@@ -847,7 +992,6 @@ window.onload = () => {
     };
     wpromisepress.onclick = handleWPromisePress;
     wpromisepress.addEventListener('touchstart', handleWPromisePress);
-
     const handlePracticeAgainRaja = () => {
         console.log("raja.....");
         promisesealedraja.style.display = "none";
@@ -860,7 +1004,6 @@ window.onload = () => {
     };
     practiceagainbtnraja.onclick = handlePracticeAgainRaja;
     practiceagainbtnraja.addEventListener('touchstart', handlePracticeAgainRaja);
-
     const handlePracticeAgainRani = () => {
         console.log("rani.....");
         promisesealedrani.style.display = "none";
@@ -873,6 +1016,82 @@ window.onload = () => {
     };
     practiceagainbtnrani.onclick = handlePracticeAgainRani;
     practiceagainbtnrani.addEventListener('touchstart', handlePracticeAgainRani);
+    // ========================================
+    // CHECK PROGRESS BUTTON
+    // ========================================
+
+    // Defensively hides every full-screen view (and stops the p5 canvas)
+    // before showing the progress screen, so nothing from a previous
+    // practice session can visually bleed through behind the chart.
+    const hideAllScreens = () => {
+        document.querySelectorAll('.screen, .skinscreen, .blueskinscreen').forEach(el => {
+            if (el.id !== 'progressScreen') el.style.display = 'none';
+        });
+        removeCanvas();
+    };
+
+    const openProgress = () => {
+        hideAllScreens();
+        progressScreen.style.display = "flex";
+        // Defer to the next frame so the browser has definitely laid out
+        // the now-visible screen before we measure it for the chart.
+        requestAnimationFrame(() => renderProgressChart());
+    };
+
+    if (checkProgressBtnRaja) {
+        checkProgressBtnRaja.addEventListener('click', openProgress);
+        checkProgressBtnRaja.addEventListener('touchstart', openProgress);
+    }
+    if (checkProgressBtnRani) {
+        checkProgressBtnRani.addEventListener('click', openProgress);
+        checkProgressBtnRani.addEventListener('touchstart', openProgress);
+    }
+    if (progressBackBtn) {
+        const closeProgress = () => {
+            progressScreen.style.display = "none";
+            if (genderState === 1) {
+                promisesealedraja.style.display = "flex";
+            } else {
+                promisesealedrani.style.display = "flex";
+            }
+        };
+        progressBackBtn.addEventListener('click', closeProgress);
+        progressBackBtn.addEventListener('touchstart', closeProgress);
+    }
+
+    if (progressClearBtn) {
+        const clearProgress = (e) => {
+            if (e) e.preventDefault();
+            const ok = window.confirm("Clear all saved compression progress? This can't be undone.");
+            if (!ok) return;
+            try {
+                const log = JSON.parse(localStorage.getItem("cprProgressLog") || "[]");
+                const remaining = log.filter(r => r.name !== PROGRESS_NAME);
+                localStorage.setItem("cprProgressLog", JSON.stringify(remaining));
+            } catch (err) {
+                console.error("Could not clear progress:", err);
+            }
+            renderProgressChart();
+        };
+        progressClearBtn.addEventListener('click', clearProgress);
+        progressClearBtn.addEventListener('touchstart', clearProgress);
+    }
+
+    // Left/right nudge arrows scroll the chart by one attempt's width
+    if (progressChartArrowLeft && progressChartScroll) {
+        const scrollLeftHandler = () => {
+            progressChartScroll.scrollBy({ left: -CHART_ATTEMPT_STEP * 2, behavior: 'smooth' });
+        };
+        progressChartArrowLeft.addEventListener('click', scrollLeftHandler);
+        progressChartArrowLeft.addEventListener('touchstart', scrollLeftHandler);
+    }
+    if (progressChartArrowRight && progressChartScroll) {
+        const scrollRightHandler = () => {
+            progressChartScroll.scrollBy({ left: CHART_ATTEMPT_STEP * 2, behavior: 'smooth' });
+        };
+        progressChartArrowRight.addEventListener('click', scrollRightHandler);
+        progressChartArrowRight.addEventListener('touchstart', scrollRightHandler);
+    }
 
     const handleNextAmb = () => {
         promisewtaud.play();
@@ -893,7 +1112,6 @@ window.onload = () => {
     };
     nextambBtn.onclick = handleNextAmb;
     nextambBtn.addEventListener('touchstart', handleNextAmb);
-
     const handleAmbRaniPromisePress = () => {
         test.play();
         promisejingle.play();
@@ -903,7 +1121,6 @@ window.onload = () => {
     };
     promiseambranipress.onclick = handleAmbRaniPromisePress;
     promiseambranipress.addEventListener('touchstart', handleAmbRaniPromisePress);
-
     const handleAmbRajaPromisePress = () => {
         test.play();
         promisejingle.play();
@@ -913,7 +1130,6 @@ window.onload = () => {
     };
     promiseambrajapress.onclick = handleAmbRajaPromisePress;
     promiseambrajapress.addEventListener('touchstart', handleAmbRajaPromisePress);
-
     const handleNextAed = () => {
         aed.style.display = "none";
         promisewtaud.play();
@@ -933,7 +1149,6 @@ window.onload = () => {
     };
     nextaedBtn.onclick = handleNextAed;
     nextaedBtn.addEventListener('touchstart', handleNextAed);
-
     const handleAedRaniPromisePress = () => {
         promisewtaud.stop();
         promisejingle.play();
@@ -943,7 +1158,6 @@ window.onload = () => {
     };
     promiseaedranipress.onclick = handleAedRaniPromisePress;
     promiseaedranipress.addEventListener('touchstart', handleAedRaniPromisePress);
-
     const handleAedRajaPromisePress = () => {
         promisewtaud.stop();
         promisejingle.play();
@@ -953,7 +1167,6 @@ window.onload = () => {
     };
     promiseaedrajapress.onclick = handleAedRajaPromisePress;
     promiseaedrajapress.addEventListener('touchstart', handleAedRajaPromisePress);
-
     const handleNextLateInactive = () => {
         lateinactive.style.display = "none";
         promiseiltaud.play();
@@ -973,7 +1186,6 @@ window.onload = () => {
     };
     nextlateinactiveBtn.onclick = handleNextLateInactive;
     nextlateinactiveBtn.addEventListener('touchstart', handleNextLateInactive);
-
     const handleLateInactiveRaniPromisePress = () => {
         promiseiltaud.stop();
         promisejingle.play();
@@ -983,7 +1195,6 @@ window.onload = () => {
     };
     promiselateinactiveranipress.onclick = handleLateInactiveRaniPromisePress;
     promiselateinactiveranipress.addEventListener('touchstart', handleLateInactiveRaniPromisePress);
-
     const handleLateInactiveRajaPromisePress = () => {
         promisejingle.play();
         test.play();
@@ -993,10 +1204,8 @@ window.onload = () => {
     };
     promiselateinactiverajapress.onclick = handleLateInactiveRajaPromisePress;
     promiselateinactiverajapress.addEventListener('touchstart', handleLateInactiveRajaPromisePress);
-
     // NOTE: showCompressionScore() is now called inside handle_performance()
     // so these button handlers no longer need to call it themselves.
-
     const handleNextLateFast = () => {
         latefast.style.display = "none";
         promisefltaud.play();
@@ -1016,7 +1225,6 @@ window.onload = () => {
     };
     nextlatefastBtn.onclick = handleNextLateFast;
     nextlatefastBtn.addEventListener('touchstart', handleNextLateFast);
-
     const handleLateFastRaniPromisePress = () => {
         promisejingle.play();
         test.play();
@@ -1026,7 +1234,6 @@ window.onload = () => {
     };
     promiselatefastranipress.onclick = handleLateFastRaniPromisePress;
     promiselatefastranipress.addEventListener('touchstart', handleLateFastRaniPromisePress);
-
     const handleLateFastRajaPromisePress = () => {
         promisejingle.play();
         test.play();
@@ -1036,7 +1243,6 @@ window.onload = () => {
     };
     promiselatefastrajapress.onclick = handleLateFastRajaPromisePress;
     promiselatefastrajapress.addEventListener('touchstart', handleLateFastRajaPromisePress);
-
     const handleNextLateSlow = () => {
         lateslow.style.display = "none";
         promisesltaud.play();
@@ -1056,7 +1262,6 @@ window.onload = () => {
     };
     nextlateslowBtn.onclick = handleNextLateSlow;
     nextlateslowBtn.addEventListener('touchstart', handleNextLateSlow);
-
     const handleLateslowRajaPromisePress = () => {
         promisejingle.play();
         test.play();
@@ -1066,7 +1271,6 @@ window.onload = () => {
     };
     promiselateslowrajapress.onclick = handleLateslowRajaPromisePress;
     promiselateslowrajapress.addEventListener('touchstart', handleLateslowRajaPromisePress);
-
     const handleLateslowRaniPromisePress = () => {
         promisejingle.play();
         test.play();
@@ -1076,15 +1280,11 @@ window.onload = () => {
     };
     promiselateslowranipress.onclick = handleLateslowRaniPromisePress;
     promiselateslowranipress.addEventListener('touchstart', handleLateslowRaniPromisePress);
-
 }; // End of window.onload
-
-
 function draw() {
     if (listeningForResponse) {
         let vol = mic.getLevel();
         console.log("Volume:", vol);
-
         if (vol > 0.3) {
             console.log("hi");
             listeningForResponse = false;
@@ -1099,9 +1299,7 @@ function draw() {
            logSession();
         }
     }
-
     if (!canvasActive) return;
-
     if (currentState === "play") {
         play_elapsed = millis() - play_start_time;
         diffGoal = maxTotalCompressions - good_compression;
@@ -1110,21 +1308,17 @@ function draw() {
             return;
         }
     }
-
     background("#FFC5B7");
     textAlign(CENTER, CENTER);
     textSize(32);
     fill(255);
-
     if (currentState === "play") {
         playScreen();
     }
 }
-
 function mousePressed() {
     userStartAudio();
     pressed_time = millis();
-
     if (currentState == "play") {
         press_music.play();
         compression_count += 1;
@@ -1140,22 +1334,18 @@ function mousePressed() {
         handle_live();
     }
 }
-
 function playScreen() {
     image(playimg, width / 2, height / 2);
     image(heartimg, width * 0.9, height * 0.08);
-
     push();
     noStroke();
     fill("#EEEEEE");
     rect(122, 44, 200, 11, 11);
     pop();
-
     push();
     imageMode(CENTER);
     image(meterimg, 78, 48);
     pop();
-
     push();
     angleMode(RADIANS);
     translate(20, 48);
@@ -1165,7 +1355,6 @@ function playScreen() {
     fill(250, 50, 60);
     text(round(bpm), 0, 0);
     pop();
-
     push();
     angleMode(RADIANS);
     translate(30, 335);
@@ -1183,7 +1372,6 @@ function playScreen() {
     }
     text(numberToDisplay + " AND", 0, 0);
     pop();
-
     push();
     translate(83, 47);
     imageMode(CENTER);
@@ -1191,39 +1379,31 @@ function playScreen() {
     rotate(angle);
     image(arrowimg, 0, 0);
     pop();
-
     progress -= 1;
     console.log(progress);
     progress = constrain(progress, 6, 200);
-
     push();
     noStroke();
     fill("#FF5058");
     rect(332, 44, -progress, 11, 11);
     pop();
-
     cheekOpacity = map(progress, 6, 210, 40, 255);
     lipOpacity = map(progress, 6, 210, 120, 255);
-
     push();
     noStroke();
     fill(253, 175, 179, cheekOpacity);
     circle(width * 0.7, height * 0.2, 132);
     pop();
-
     push();
     noStroke();
     fill(253, 175, 179, cheekOpacity);
     circle(width * 0.7, height * 0.8, 132);
     pop();
-
     push();
     noStroke();
     fill(255, 124, 130, lipOpacity);
     ellipse(width * 0.82, height * 0.5, 42, 120);
-
     console.log(diffGoal);
-
     push();
     angleMode(RADIANS);
     translate(30, 520);
@@ -1235,7 +1415,6 @@ function playScreen() {
     if (timeleft < 0) { timeleft = 0; }
     text(round((timeleft / 1000), 0) + "s", 0, 0);
     pop();
-
     push();
     angleMode(RADIANS);
     translate(52, 520);
@@ -1245,12 +1424,10 @@ function playScreen() {
     fill(0);
     text("Time left", 0, 0);
     pop();
-
     lastTouchElapsed = (millis() - pressed_time);
     console.log(lastTouchElapsed);
     handle_inactivity();
 }
-
 function handle_inactivity() {
     if (lastTouchElapsed > 4000) {
         currentState = "lateinactive";
@@ -1260,14 +1437,12 @@ function handle_inactivity() {
        logSession();
     }
 }
-
 function handle_live() {
     if (bpm <= 120 && bpm >= 100) {
         progress += goodfillRate;
         if (good_compression < maxTotalCompressions) {
             good_compression++;
         }
-
         angle = 0;
     } else if (bpm > 121) {
         angle = 60;
@@ -1279,7 +1454,6 @@ function handle_live() {
         slowcount = slowcount + 1;
     }
 }
-
 // =====================================================
 // UPDATED handle_performance()
 // showCompressionScore() is called ONCE here, covering
@@ -1289,29 +1463,24 @@ function handle_live() {
 // =====================================================
 function handle_performance() {
     if (play_elapsed >= task_time) {
-
-        showCompressionScore(); // ← called once for ALL outcomes
-
+        showCompressionScore(); // ← called once for ALL outcomes, also logs progress
         if (diffGoal <= 5) {
             currentState = "win";
             p5Screen.style.display = "none";
             win.style.display = "flex";
             winaud.play();
-
         } else if (diffGoal <= 8) {
             currentState = "aed";
             p5Screen.style.display = "none";
             aed.style.display = "flex";
             aedaud.play();
             winaud.play();
-
         } else if (diffGoal <= 10) {
             currentState = "amb";
             p5Screen.style.display = "none";
             amb.style.display = "flex";
             ambaud.play();
             winaud.play();
-
         } else if (diffGoal >= 20) {
             if (fastcount > slowcount) {
                 currentState = "latefast";
@@ -1330,66 +1499,42 @@ function handle_performance() {
 }
 // log info to google sheets
 async function logSession() {
-
     if (sessionLogged) return;
     sessionLogged = true;
-
     const now = new Date();
-
     let country = "Unknown";
     let state = "Unknown";
     let city = "Unknown";
-
     try {
-
         const response = await fetch("https://ipapi.co/json/");
         const location = await response.json();
-
         country = location.country_name || "Unknown";
         state = location.region || "Unknown";
         city = location.city || "Unknown";
-
     } catch (error) {
-
         console.log("Couldn't get location");
-
     }
-
     const data = {
-
         date: now.toLocaleDateString(),
         time: now.toLocaleTimeString(),
-
         country: country,
         state: state,
         city: city,
-
         goodCompressions: good_compression,
         targetCompressions: maxTotalCompressions
-
     };
-
     console.log("Logging:", data);
-
     try {
-
         const response = await fetch(scriptURL, {
             method: "POST",
             body: JSON.stringify(data)
         });
-
         const result = await response.text();
-
         console.log(result);
-
     } catch (error) {
-
         console.error(error);
-
     }
-
 }
-
 function reset() {
     play_start_time = millis();
     good_compression = 0;
@@ -1410,6 +1555,7 @@ function reset() {
     slowcount = 0;
     diffGoal = 0;
     play_elapsed = 0;
+    scoreLoggedForAttempt = false;
     breath_no = floor(random(11));
     dialedNumber = '';
     maxTotalCompressions = floor(random(30, 50));
@@ -1417,11 +1563,9 @@ function reset() {
     currentState = "blank";
   sessionLogged = false;
 }
-
 function windowResized() {
     resizeCanvas(windowWidth, windowHeight);
 }
-
 function touchStarted() {
     mousePressed();
     return false;
