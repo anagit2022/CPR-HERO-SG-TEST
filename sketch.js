@@ -807,6 +807,8 @@ window.onload = () => {
     rnoBtn.addEventListener('touchstart', handleRno);
     const handleBno = () => {
         requestaedaud.play();
+        could_you_see_breathing.pause();
+        could_you_see_breathing.currentTime = 0;
         checkbreathingq.style.display = "none";
         requestaed.style.display = "flex";
     };
