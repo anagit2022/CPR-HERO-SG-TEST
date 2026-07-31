@@ -134,7 +134,7 @@ display: flex;
 }
 #dpromiseinstruc,#dpromisepress,#dpromiseseal,#dranipromisepress,#rranipromisepress,#rrajapromisepress,#bpromisepress,#branipromisepress,#wranipromisepress,#wpromisepress {
   position: absolute;
-  bottom: 5vh;       /* distance from top */
+  bottom: 1vh;       /* distance from top */
   right: 10vw;     /* distance from right */
   width: 20vw   /* responsive size */
   justify-content: center;
@@ -226,6 +226,29 @@ display: flex; /* show first screen by default */
    COMPRESSION SCORE BADGE
    Replaces hero.png on latefast + lateslow promise screens
    ======================================== */
+
+/* ========================================
+   CHECK-FOR-BREATHING COUNTDOWN TIMER
+   Small circular badge, top-right of the checkbreathing screen,
+   counting down from 10 to 0 over the 10s the screen is shown.
+   ======================================== */
+.breath-timer {
+  position: absolute;
+  top: 5vh;
+  right: 5vw;
+  width: 16vw;
+  max-width: 64px;
+  min-width: 48px;
+  aspect-ratio: 1 / 1;
+  z-index: 10;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.15));
+}
+
+.breath-timer-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
 
 .compression-score-badge {
   position: absolute;
