@@ -1379,7 +1379,7 @@ function mousePressed() {
 }
 function playScreen() {
     image(playimg, width / 2, height / 2);
-    image(heartimg, width * 0.9, height * 0.08);
+    //image(heartimg, width * 0.9, height * 0.08);
     push();
     noStroke();
     fill("#EEEEEE");
@@ -1430,7 +1430,7 @@ function playScreen() {
     textSize(11);
     textStyle(BOLD);
     fill(0);
-    text("Presses per minute", 0, 0);
+    text("BPM", 0, 0);
     textStyle(NORMAL);
     pop();
     progress -= 1;
