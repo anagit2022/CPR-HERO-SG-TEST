@@ -3,6 +3,7 @@ let mic;
 let listeningForResponse = false;
 let responseTimeout = null;
 let breath_no ;
+let breathTimerInterval = null; // holds the setInterval id for the checkbreathing countdown badge
 let dialedNumber = ''; // <-- Dial Pad Variable
 let t1, t2, t3, t4, t5,t6;
 let canvas;
@@ -809,6 +810,15 @@ window.onload = () => {
         checkbreathing.style.display = "flex";
         console.log(breath_no);
         const breathFaceImg = document.getElementById("breathFaceImg");
+        const breathTimerEl = document.getElementById("breathTimerNumber");
+        let breathTimerCount = 10;
+        if (breathTimerEl) breathTimerEl.textContent = breathTimerCount;
+        clearInterval(breathTimerInterval);
+        breathTimerInterval = setInterval(() => {
+            breathTimerCount -= 1;
+            if (breathTimerEl) breathTimerEl.textContent = Math.max(breathTimerCount, 0);
+            if (breathTimerCount <= 0) clearInterval(breathTimerInterval);
+        }, 1000);
         if (breath_no % 3 === 0) {
             gasp_aud.play();
             if (breathFaceImg) breathFaceImg.src = "gasping.gif";
@@ -827,6 +837,7 @@ window.onload = () => {
             gasp_aud.stop();
             normal_breath_aud.stop();
             if (breathFaceImg) breathFaceImg.src = "faceonly.png";
+            clearInterval(breathTimerInterval);
         }, 10000);
     };
     rnoBtn.onclick = handleRno;
@@ -1425,7 +1436,7 @@ function mousePressed() {
 }
 function playScreen() {
     image(playimg, width / 2, height / 2);
-    image(heartimg, width * 0.9, height * 0.08);
+   // image(heartimg, width * 0.9, height * 0.08);
     push();
     noStroke();
     fill("#EEEEEE");
@@ -1470,13 +1481,13 @@ function playScreen() {
     pop();
     push();
     angleMode(RADIANS);
-    translate(108, 50);
+    translate(106, 50);
     rotate(-HALF_PI);
     textAlign(CENTER, TOP);
     textSize(11);
     textStyle(BOLD);
     fill(0);
-    text("Presses per minute", 0, 0);
+    text("BPM", 0, 0);
     textStyle(NORMAL);
     pop();
     progress -= 1;
