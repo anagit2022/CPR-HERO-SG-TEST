@@ -126,14 +126,14 @@ display: flex;
 }
 #nextprBtn,#nextaBtn,#nextc1,#nextc2,#nextc3,#nextc4{
   position: absolute;
-  bottom: 14vh;       /* distance from top */
+  bottom: 17vh;       /* distance from top */
   right: 10vw;     /* distance from right */
   width: 20vw   /* responsive size */
   cursor: pointer;
 }
 #dpromiseinstruc,#dpromisepress,#dpromiseseal,#dranipromisepress,#rranipromisepress,#rrajapromisepress,#bpromisepress,#branipromisepress,#wranipromisepress,#wpromisepress {
   position: absolute;
-  bottom: 5vh;       /* distance from top */
+  bottom: 7vh;       /* distance from top */
   right: 10vw;     /* distance from right */
   width: 20vw   /* responsive size */
   justify-content: center;
