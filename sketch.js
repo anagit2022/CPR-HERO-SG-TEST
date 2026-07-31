@@ -22,6 +22,8 @@ const CHART_ATTEMPT_STEP = 92;      // fixed px spacing between attempts in the 
 const CHART_MIN_STEP = 36;          // px, minimum spacing between points before the "all" view needs to scroll
 const CHART_RECENT_COUNT = 7;       // number of attempts shown in "recent" (zoomed-in) mode
 let chartMode = "recent";           // "recent" | "all" — toggled by the chart's view buttons
+const CHART_OVERFLOW_TOLERANCE = 20; // px of "overflow" small enough to just treat as a perfect fit
+let lastChartVisibleWidth = 0;       // px, remembered so the arrow buttons can scroll by a sensible page amount
 const PROGRESS_NAME = "Friend";     // this version has no name entry, so all attempts are logged under one bucket
 // play screen
 let cheekOpacity = 40;
@@ -287,7 +289,13 @@ function renderProgressChart() {
   const step = chartMode === "recent"
     ? scrollVisibleWidth / displayRecords.length
     : Math.max(CHART_MIN_STEP, scrollVisibleWidth / displayRecords.length);
-  const contentWidth = Math.max(scrollVisibleWidth, step * displayRecords.length);
+  // A few px of "overflow" from rounding/clamping isn't worth scrolling for —
+  // treat anything under CHART_OVERFLOW_TOLERANCE as a perfect fit so the
+  // arrows don't appear (and can't cause a jarring near-zero-range jump).
+  const rawContentWidth = step * displayRecords.length;
+  const overflowing = rawContentWidth > scrollVisibleWidth + CHART_OVERFLOW_TOLERANCE;
+  const contentWidth = overflowing ? rawContentWidth : scrollVisibleWidth;
+  lastChartVisibleWidth = scrollVisibleWidth;
 
   track.style.width = contentWidth + "px";
   track.style.height = trackHeight + "px";
@@ -380,7 +388,6 @@ function renderProgressChart() {
     track.appendChild(attemptLabel);
   });
 
-  const overflowing = contentWidth > scrollVisibleWidth + 1;
   if (arrowLeft) arrowLeft.style.display = overflowing ? "flex" : "none";
   if (arrowRight) arrowRight.style.display = overflowing ? "flex" : "none";
 
@@ -844,6 +851,8 @@ window.onload = () => {
     rnoBtn.addEventListener('touchstart', handleRno);
     const handleBno = () => {
         requestaedaud.play();
+        could_you_see_breathing.pause();
+        could_you_see_breathing.currentTime = 0;
         checkbreathingq.style.display = "none";
         requestaed.style.display = "flex";
     };
@@ -1177,17 +1186,19 @@ window.onload = () => {
         progressClearBtn.addEventListener('touchstart', clearProgress);
     }
 
-    // Left/right nudge arrows scroll the chart by one attempt's width
+    // Left/right nudge arrows scroll the chart by roughly one screenful,
+    // based on the chart's actual current visible width — not a fixed
+    // pixel jump, which could badly overshoot a barely-scrollable chart.
     if (progressChartArrowLeft && progressChartScroll) {
         const scrollLeftHandler = () => {
-            progressChartScroll.scrollBy({ left: -CHART_ATTEMPT_STEP * 2, behavior: 'smooth' });
+            progressChartScroll.scrollBy({ left: -(lastChartVisibleWidth || CHART_ATTEMPT_STEP * 2) * 0.85, behavior: 'smooth' });
         };
         progressChartArrowLeft.addEventListener('click', scrollLeftHandler);
         progressChartArrowLeft.addEventListener('touchstart', scrollLeftHandler);
     }
     if (progressChartArrowRight && progressChartScroll) {
         const scrollRightHandler = () => {
-            progressChartScroll.scrollBy({ left: CHART_ATTEMPT_STEP * 2, behavior: 'smooth' });
+            progressChartScroll.scrollBy({ left: (lastChartVisibleWidth || CHART_ATTEMPT_STEP * 2) * 0.85, behavior: 'smooth' });
         };
         progressChartArrowRight.addEventListener('click', scrollRightHandler);
         progressChartArrowRight.addEventListener('touchstart', scrollRightHandler);
@@ -1436,7 +1447,7 @@ function mousePressed() {
 }
 function playScreen() {
     image(playimg, width / 2, height / 2);
-   // image(heartimg, width * 0.9, height * 0.08);
+    image(heartimg, width * 0.9, height * 0.08);
     push();
     noStroke();
     fill("#EEEEEE");
