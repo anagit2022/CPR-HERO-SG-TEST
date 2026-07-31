@@ -134,7 +134,7 @@ display: flex;
 }
 #dpromiseinstruc,#dpromisepress,#dpromiseseal,#dranipromisepress,#rranipromisepress,#rrajapromisepress,#bpromisepress,#branipromisepress,#wranipromisepress,#wpromisepress {
   position: absolute;
-  bottom: 1vh;       /* distance from top */
+  bottom: 5vh;       /* distance from top */
   right: 10vw;     /* distance from right */
   width: 20vw   /* responsive size */
   justify-content: center;
@@ -471,7 +471,7 @@ display: flex; /* show first screen by default */
   font-weight: 700;
   font-size: 14px;
   text-align: center;
-  border-radius: 10px;
+  border-radius: 30px;
   cursor: pointer;
   user-select: none;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
@@ -532,12 +532,43 @@ display: flex; /* show first screen by default */
   font-family: 'Albert Sans', sans-serif;
   font-size: 34px;
   font-weight: 700;
-  color: #038660;
+  color: #038660;   /* default; overridden inline by JS to match the latest attempt's pass/fail color */
 }
 
 .progressLatestValue .progressLatestDenom {
   font-size: 20px;
   font-weight: 600;
+}
+
+/* Recent-7 / All toggle, sits between the score card and the chart */
+.progressChartModeToggle {
+  position: absolute;
+  top: 36vh;
+  left: 8vw;
+  width: 84vw;
+  max-width: 340px;
+  display: flex;
+  gap: 8px;
+  z-index: 3;
+}
+
+.progressChartModeBtn {
+  flex: 1;
+  padding: 7px 0;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.9);
+  font-family: 'Albert Sans', sans-serif;
+  font-weight: 600;
+  font-size: 12px;
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.progressChartModeBtn.active {
+  background: #ffffff;
+  color: #F25C3B;
 }
 
 .progressChartWrap {
@@ -546,8 +577,12 @@ display: flex; /* show first screen by default */
   left: 8vw;
   width: 84vw;
   max-width: 340px;
-  height: 40vh;
-  max-height: 300px;
+  /* top+bottom (rather than a fixed height) so the chart always stops
+     short of the footer's Back/Clear buttons, however tall or short the
+     screen is. max-height caps it on very tall screens. */
+  bottom: 15vh;    /* fallback for browsers without dvh support */
+  bottom: 15dvh;   /* leaves guaranteed clearance above the footer */
+  max-height: 320px;
 }
 
 .progressChartYLabel {
