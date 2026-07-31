@@ -203,15 +203,16 @@ function formatFullDateTime(dateStr) {
 }
 
 const CHART_BASELINE_OFFSET = 20; // px reserved below the baseline for attempt numbers
-const CHART_TOP_GAP = 50;         // px reserved above the tallest point for its date label (must clear point radius + label height)
-const CHART_POINT_RADIUS = 22;    // px, half the circle's 44px diameter
+const CHART_TOP_PADDING = 16;     // px reserved above the 100% line for the topmost point's radius
+const CHART_GUTTER_WIDTH = 46;    // px reserved on the left for the axis title + number column
 
-// Builds a lollipop chart of the compression accuracy (normalized to a
-// score out of 100) for each practice attempt, using plain positioned DOM
+// Builds a line chart of each attempt's compression accuracy as a
+// percentage (good_compression / maxTotalCompressions * 100) plotted
+// against a fixed 0–100 axis with gridlines, using plain positioned DOM
 // elements (not canvas) so it scrolls, sizes, and hit-tests reliably
 // across devices. Attempts are spaced at a fixed width so points never
 // overlap — the track just grows wider and becomes horizontally
-// scrollable instead.
+// scrollable instead, while the y-axis numbers stay fixed.
 function renderProgressChart() {
   const records = getUserProgress();
   const track = document.getElementById("progressChartTrack");
@@ -225,12 +226,13 @@ function renderProgressChart() {
   const tooltip = document.getElementById("progressTooltip");
   const yLabel = document.querySelector(".progressChartYLabel");
   const xLabel = document.querySelector(".progressChartXLabel");
+  const axisNums = document.getElementById("progressChartAxisNums");
 
   if (tooltip) tooltip.style.display = "none";
 
   // Latest score card always reflects the most recent attempt — shown as
   // the actual good compressions out of that session's target, not a
-  // normalized-to-100 percentage.
+  // percentage.
   if (latestScoreEl) {
     const latest = records.length ? records[records.length - 1] : null;
     latestScoreEl.textContent = latest ? latest.score : 0;
@@ -239,11 +241,13 @@ function renderProgressChart() {
 
   if (!track || !scrollWrap || !chartWrap) return;
   track.innerHTML = "";
+  if (axisNums) axisNums.innerHTML = "";
 
   if (records.length === 0) {
     scrollWrap.style.display = "none";
     if (yLabel) yLabel.style.display = "none";
     if (xLabel) xLabel.style.display = "none";
+    if (axisNums) axisNums.style.display = "none";
     if (arrowLeft) arrowLeft.style.display = "none";
     if (arrowRight) arrowRight.style.display = "none";
     if (noDataEl) noDataEl.style.display = "block";
@@ -252,11 +256,12 @@ function renderProgressChart() {
   scrollWrap.style.display = "block";
   if (yLabel) yLabel.style.display = "flex";
   if (xLabel) xLabel.style.display = "block";
+  if (axisNums) axisNums.style.display = "block";
   if (noDataEl) noDataEl.style.display = "none";
 
   const wrapRect = chartWrap.getBoundingClientRect();
   const trackHeight = Math.max(Math.round(wrapRect.height) - CHART_BASELINE_OFFSET, 140);
-  const scrollVisibleWidth = Math.round(wrapRect.width) - 26; // minus the y-label gutter
+  const scrollVisibleWidth = Math.round(wrapRect.width) - CHART_GUTTER_WIDTH;
   const contentWidth = Math.max(scrollVisibleWidth, CHART_ATTEMPT_STEP * records.length + 20);
 
   track.style.width = contentWidth + "px";
@@ -273,46 +278,78 @@ function renderProgressChart() {
   axisV.style.top = "0px";
   track.appendChild(axisV);
 
-  const usableHeight = Math.max(trackHeight - CHART_BASELINE_OFFSET - CHART_TOP_GAP - CHART_POINT_RADIUS, 40);
+  // usableHeight spans the full 0–100% range on the fixed axis: from the
+  // baseline (0%) up to CHART_TOP_PADDING below the track's top edge,
+  // which leaves just enough room for a point sitting exactly at 100%
+  // not to get clipped by the track's own bounds.
+  const usableHeight = Math.max(trackHeight - CHART_BASELINE_OFFSET - CHART_TOP_PADDING, 40);
 
-  records.forEach((r, i) => {
+  // Gridlines + their matching fixed y-axis numbers, every 10%. axisNums
+  // shares the exact same top/bottom box as the track, so a number's
+  // "bottom" offset lines up with its gridline even while the track
+  // itself scrolls horizontally underneath.
+  for (let k = 0; k <= 10; k++) {
+    const bottomPx = CHART_BASELINE_OFFSET + (k / 10) * usableHeight;
+
+    const gridline = document.createElement("div");
+    gridline.className = "chartGridLine";
+    gridline.style.bottom = bottomPx + "px";
+    track.appendChild(gridline);
+
+    if (axisNums) {
+      const num = document.createElement("div");
+      num.className = "chartAxisNumber";
+      num.style.bottom = bottomPx + "px";
+      num.textContent = k * 10;
+      axisNums.appendChild(num);
+    }
+  }
+
+  // Precompute each point's position — "bottom" (for the point/gridline
+  // coordinate system) and "top" (for the line-segment angle math below,
+  // where standard rotate() degrees assume a top-left origin).
+  const points = records.map((r, i) => {
     const x = CHART_ATTEMPT_STEP * i + CHART_ATTEMPT_STEP / 2;
-    // Height on the chart is still normalized (0–100%) so attempts with
-    // different targets sit on the same visual scale, but everything the
-    // learner actually reads shows their real good_compression/maxTotalCompressions.
-    const scoreOffset = usableHeight * (Math.min(r.percent, 100) / 100);
-    const centerBottom = CHART_BASELINE_OFFSET + CHART_POINT_RADIUS + scoreOffset;
+    const pct = Math.min(Math.max(r.percent, 0), 100);
+    const bottomPx = CHART_BASELINE_OFFSET + (pct / 100) * usableHeight;
+    return { x, bottomPx, topPx: trackHeight - bottomPx, record: r };
+  });
+
+  // Connecting line segments, drawn first so the points sit on top of them.
+  for (let i = 0; i < points.length - 1; i++) {
+    const p1 = points[i], p2 = points[i + 1];
+    const dx = p2.x - p1.x;
+    const dy = p2.topPx - p1.topPx;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+    const seg = document.createElement("div");
+    seg.className = "chartLineSeg";
+    seg.style.left = p1.x + "px";
+    seg.style.top = p1.topPx + "px";
+    seg.style.width = length + "px";
+    seg.style.transform = "rotate(" + angle + "deg)";
+    track.appendChild(seg);
+  }
+
+  points.forEach((p, i) => {
+    const r = p.record;
     const diff = Math.abs(r.max - r.score);
     const color = diff <= 10 ? "#038660" : "#FF5058";
 
-    const stem = document.createElement("div");
-    stem.className = "chartStem";
-    stem.style.left = x + "px";
-    stem.style.bottom = CHART_BASELINE_OFFSET + "px";
-    stem.style.height = (centerBottom - CHART_BASELINE_OFFSET) + "px";
-    track.appendChild(stem);
-
     const point = document.createElement("div");
     point.className = "chartPoint";
-    point.style.left = x + "px";
-    point.style.bottom = centerBottom + "px";
+    point.style.left = p.x + "px";
+    point.style.bottom = p.bottomPx + "px";
     point.style.background = color;
-    point.textContent = r.score + "/" + r.max;
     const onTap = (e) => { e.preventDefault(); showChartTooltip(point, r); };
     point.addEventListener("click", onTap);
     point.addEventListener("touchend", onTap);
     track.appendChild(point);
 
-    const dateLabel = document.createElement("div");
-    dateLabel.className = "chartDateLabel";
-    dateLabel.style.left = x + "px";
-    dateLabel.style.bottom = (centerBottom + CHART_POINT_RADIUS + 6) + "px";
-    dateLabel.textContent = formatRelativeLabel(r.date);
-    track.appendChild(dateLabel);
-
     const attemptLabel = document.createElement("div");
     attemptLabel.className = "chartAttemptLabel";
-    attemptLabel.style.left = x + "px";
+    attemptLabel.style.left = p.x + "px";
     attemptLabel.style.bottom = "2px";
     attemptLabel.textContent = i + 1;
     track.appendChild(attemptLabel);
