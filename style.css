@@ -133,7 +133,7 @@ display: flex;
 }
 #dpromiseinstruc,#dpromisepress,#dpromiseseal,#dranipromisepress,#rranipromisepress,#rrajapromisepress,#bpromisepress,#branipromisepress,#wranipromisepress,#wpromisepress {
   position: absolute;
-  bottom: 8vh;       /* distance from top */
+  bottom: 5vh;       /* distance from top */
   right: 10vw;     /* distance from right */
   width: 20vw   /* responsive size */
   justify-content: center;
@@ -389,8 +389,8 @@ display: flex; /* show first screen by default */
     justify-content: center;
     gap: 3vw;       /* responsive spacing */
     position: absolute;
-    bottom: 13vh;
-  margin-top: 10vh;
+    bottom: 6vh;    /* fallback for browsers without dvh support */
+    bottom: 6dvh;   /* accounts for Chrome's address bar; also brought lower per feedback (was 16vh) */
 }
 
 
