@@ -203,7 +203,7 @@ function formatFullDateTime(dateStr) {
 }
 
 const CHART_BASELINE_OFFSET = 20; // px reserved below the baseline for attempt numbers
-const CHART_TOP_GAP = 34;         // px reserved above the tallest point for its date label
+const CHART_TOP_GAP = 50;         // px reserved above the tallest point for its date label (must clear point radius + label height)
 const CHART_POINT_RADIUS = 22;    // px, half the circle's 44px diameter
 
 // Builds a lollipop chart of the compression accuracy (normalized to a
@@ -745,12 +745,17 @@ window.onload = () => {
         awake.style.display = "none";
         checkbreathing.style.display = "flex";
         console.log(breath_no);
+        const breathFaceImg = document.getElementById("breathFaceImg");
         if (breath_no % 3 === 0) {
             gasp_aud.play();
+            if (breathFaceImg) breathFaceImg.src = "gasping.gif";
             console.log(10);
         } else if (breath_no % 5 === 0) {
             normal_breath_aud.play();
+            if (breathFaceImg) breathFaceImg.src = "faceonly.png";
             console.log(20);
+        } else {
+            if (breathFaceImg) breathFaceImg.src = "faceonly.png";
         }
         setTimeout(() => {
             checkbreathing.style.display = "none";
@@ -758,6 +763,7 @@ window.onload = () => {
             couldobserveb.play();
             gasp_aud.stop();
             normal_breath_aud.stop();
+            if (breathFaceImg) breathFaceImg.src = "faceonly.png";
         }, 10000);
     };
     rnoBtn.onclick = handleRno;
@@ -1379,6 +1385,17 @@ function playScreen() {
     rotate(angle);
     image(arrowimg, 0, 0);
     pop();
+    push();
+    angleMode(RADIANS);
+    translate(108, 50);
+    rotate(-HALF_PI);
+    textAlign(CENTER, TOP);
+    textSize(11);
+    textStyle(BOLD);
+    fill(0);
+    text("Presses per minute", 0, 0);
+    textStyle(NORMAL);
+    pop();
     progress -= 1;
     console.log(progress);
     progress = constrain(progress, 6, 200);
@@ -1386,6 +1403,17 @@ function playScreen() {
     noStroke();
     fill("#FF5058");
     rect(332, 44, -progress, 11, 11);
+    pop();
+    push();
+    angleMode(RADIANS);
+    translate(346, 50);
+    rotate(-HALF_PI);
+    textAlign(CENTER, TOP);
+    textSize(11);
+    textStyle(BOLD);
+    fill(0);
+    text("Blood flow", 0, 0);
+    textStyle(NORMAL);
     pop();
     cheekOpacity = map(progress, 6, 210, 40, 255);
     lipOpacity = map(progress, 6, 210, 120, 255);
@@ -1481,13 +1509,13 @@ function handle_performance() {
             amb.style.display = "flex";
             ambaud.play();
             winaud.play();
-        } else if (diffGoal >= 20) {
+        } else {
             if (fastcount > slowcount) {
                 currentState = "latefast";
                 p5Screen.style.display = "none";
                 latefast.style.display = "flex";
                 lateaud.play();
-            } else if (slowcount > fastcount) {
+            } else {
                 currentState = "lateslow";
                 p5Screen.style.display = "none";
                 lateslow.style.display = "flex";
