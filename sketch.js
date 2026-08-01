@@ -6,6 +6,7 @@ let breath_no ;
 let breathTimerInterval = null; // holds the setInterval id for the checkbreathing countdown badge
 let dialedNumber = ''; // <-- Dial Pad Variable
 let t1, t2, t3, t4, t5,t6;
+let tOkOk, tHmHm; // timers for the "ok ok" / "hm hm" filler audio after pressing speaker
 let canvas;
 let canvasActive = false;
 let count=0;
@@ -77,6 +78,8 @@ function preload(){
   dial = loadSound("9aud.mp3");
   addspeakeraud = loadSound("ElevenLabs_2025-11-04T12_00_41_Alice_pre_sp100_s50_sb75_v3.mp3");
   victimaud = loadSound("ElevenLabs_2025-11-04T17_32_18_Alice_pre_sp100_s50_sb75_v3.mp3");
+  okokaud = loadSound("ok_ok.mp3");   // filler audio: dispatcher says "ok ok" — rename if your file differs
+  hmhmaud = loadSound("hm_hm.mp3");   // filler audio: dispatcher says "hm hm" — rename if your file differs
   cprC1aud = loadSound("ElevenLabs_2025-06-28T05_17_33_Alice_pre_sp100_s50_sb75_v3.mp3");
   cprC2aud = loadSound("ElevenLabs_2025-06-25T03_15_33_Alice_pre_sp100_s50_sb75_v3.mp3");
   cprC3aud = loadSound("ElevenLabs_2025-06-16T00_04_57_Alice_pre_sp100_s50_sb75_v3.mp3");
@@ -629,7 +632,7 @@ window.onload = () => {
     beginBtn.addEventListener('touchstart', handleBegin);
     const handleBubbleShortcut = () => {
         userStartAudio();
-        [t1, t2, t3, t4, t5, t6].forEach(t => clearTimeout(t));
+        [t1, t2, t3, t4, t5, t6, tOkOk, tHmHm].forEach(t => clearTimeout(t));
         begin1.style.display = "none";
         intro.style.display = "none";
         cpr4.style.display = "none";
@@ -851,7 +854,7 @@ window.onload = () => {
     rnoBtn.addEventListener('touchstart', handleRno);
     const handleBno = () => {
         requestaedaud.play();
-        could_you_see_breathing.pause();
+      could_you_see_breathing.pause();
         could_you_see_breathing.currentTime = 0;
         checkbreathingq.style.display = "none";
         requestaed.style.display = "flex";
@@ -949,6 +952,15 @@ window.onload = () => {
         call112.currentTime = 0;
         addspeaker.style.display = "none";
         addedspeaker.style.display = "flex";
+        // Fill the quiet gap before the victim-info line with two short
+        // acknowledgement sounds from the dispatcher, so it doesn't feel
+        // like the call has gone silent.
+        tOkOk = setTimeout(() => {
+            okokaud.play();
+        }, 5000);
+        tHmHm = setTimeout(() => {
+            hmhmaud.play();
+        }, 7000);
         t1 = setTimeout(() => {
             addedspeaker.style.display = "none";
             victiminca.style.display = "flex";
@@ -990,11 +1002,13 @@ window.onload = () => {
     const stopAllCPRAudio = () => {
         victimaud.stop();
         addspeakeraud.stop();
+        okokaud.stop();
+        hmhmaud.stop();
         cprC1aud.stop();
         cprC2aud.stop();
         cprC3aud.stop();
         cprC4aud.stop();
-        [t1, t2, t3, t4, t5, t6].forEach(t => clearTimeout(t));
+        [t1, t2, t3, t4, t5, t6, tOkOk, tHmHm].forEach(t => clearTimeout(t));
     };
     const handleNextC1 = () => {
         clearTimeout(t1);
@@ -1447,7 +1461,7 @@ function mousePressed() {
 }
 function playScreen() {
     image(playimg, width / 2, height / 2);
-    image(heartimg, width * 0.9, height * 0.08);
+    //image(heartimg, width * 0.9, height * 0.08);
     push();
     noStroke();
     fill("#EEEEEE");
