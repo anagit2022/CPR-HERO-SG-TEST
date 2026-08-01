@@ -19,12 +19,9 @@ const scriptURL = "https://script.google.com/macros/s/AKfycbxNVQSYjwBKOwIT8stzs-
 let sessionLogged = false;
 // progress tracking (compression score history, saved to localStorage)
 let scoreLoggedForAttempt = false;  // guards against logging the same attempt multiple times
-const CHART_ATTEMPT_STEP = 92;      // fixed px spacing between attempts in the progress chart
-const CHART_MIN_STEP = 36;          // px, minimum spacing between points before the "all" view needs to scroll
-const CHART_RECENT_COUNT = 7;       // number of attempts shown in "recent" (zoomed-in) mode
+const CHART_WINDOW_SIZE = 7;        // number of attempts shown at once, in both "recent" and "all" (paged) views
 let chartMode = "recent";           // "recent" | "all" — toggled by the chart's view buttons
-const CHART_OVERFLOW_TOLERANCE = 20; // px of "overflow" small enough to just treat as a perfect fit
-let lastChartVisibleWidth = 0;       // px, remembered so the arrow buttons can scroll by a sensible page amount
+let chartWindowStart = Infinity;    // first index shown in "all" mode; clamped in renderProgressChart, so Infinity always means "show the latest window"
 const PROGRESS_NAME = "Friend";     // this version has no name entry, so all attempts are logged under one bucket
 // play screen
 let cheekOpacity = 40;
@@ -37,6 +34,8 @@ let progress = 0;
 //bpm meter
 let angle = 0;
 let bpm = 0; 
+let bpmSum = 0;         // running total of every instantaneous BPM reading this session, for the average
+let bpmSampleCount = 0; // how many readings have gone into bpmSum
 let numberToDisplay;
 let decayRate = 10;
 let decay_normal = 90;
@@ -174,6 +173,7 @@ function logProgress() {
       percent: maxTotalCompressions > 0
         ? Math.round((good_compression / maxTotalCompressions) * 100)
         : 0,
+      avgBpm: bpmSampleCount > 0 ? Math.round(bpmSum / bpmSampleCount) : 0,
       date: new Date().toISOString()
     };
     const log = JSON.parse(localStorage.getItem("cprProgressLog") || "[]");
@@ -231,6 +231,8 @@ function renderProgressChart() {
   const latestScoreEl = document.getElementById("progressLatestScore");
   const latestDenomEl = document.getElementById("progressLatestDenom");
   const latestValueEl = document.getElementById("progressLatestValue");
+  const latestBpmEl = document.getElementById("progressLatestBpm");
+  const latestBpmValueEl = document.getElementById("progressLatestBpmValue");
   const arrowLeft = document.getElementById("progressChartArrowLeft");
   const arrowRight = document.getElementById("progressChartArrowRight");
   const tooltip = document.getElementById("progressTooltip");
@@ -252,6 +254,16 @@ function renderProgressChart() {
     if (latestValueEl) {
       const latestDiff = latest ? Math.abs(latest.max - latest.score) : 0;
       latestValueEl.style.color = (!latest || latestDiff <= 10) ? "#038660" : "#FF5058";
+    }
+    if (latestBpmEl) {
+      const avgBpm = latest ? (latest.avgBpm || 0) : 0;
+      latestBpmEl.textContent = avgBpm;
+      if (latestBpmValueEl) {
+        // Green when the average sits in the standard 100-120 CPR target
+        // range (same range handle_live() treats as "good"), red otherwise.
+        const bpmInRange = avgBpm >= 100 && avgBpm <= 120;
+        latestBpmValueEl.style.color = (!latest || bpmInRange) ? "#038660" : "#FF5058";
+      }
     }
   }
 
@@ -275,33 +287,32 @@ function renderProgressChart() {
   if (axisNums) axisNums.style.display = "block";
   if (noDataEl) noDataEl.style.display = "none";
 
-  // "recent" mode shows only the last CHART_RECENT_COUNT attempts,
-  // spaced to exactly fill the visible width (a "zoomed in" view that
-  // never needs scrolling). "all" mode shows every attempt — spaced to
-  // fill the width too when there aren't many, but falling back to a
-  // fixed minimum spacing (and horizontal scroll) once there are enough
-  // attempts that any smaller spacing would make the points illegible.
-  const displayRecords = chartMode === "recent"
-    ? allRecords.slice(-CHART_RECENT_COUNT)
-    : allRecords;
-  const indexOffset = allRecords.length - displayRecords.length;
+  // Both views show a fixed-size window of CHART_WINDOW_SIZE attempts,
+  // spaced to exactly fill the visible width. "recent" always shows the
+  // latest window. "all" pages through history via the arrows, moving
+  // chartWindowStart a full window at a time — never native scrolling —
+  // so there's no scroll position to end up stale, mismatched, or
+  // showing blank space: each render deterministically picks and lays
+  // out exactly the attempts it displays.
+  let displayRecords, indexOffset;
+  if (chartMode === "recent") {
+    displayRecords = allRecords.slice(-CHART_WINDOW_SIZE);
+    indexOffset = allRecords.length - displayRecords.length;
+  } else {
+    const maxStart = Math.max(0, allRecords.length - CHART_WINDOW_SIZE);
+    chartWindowStart = Math.min(Math.max(chartWindowStart, 0), maxStart);
+    displayRecords = allRecords.slice(chartWindowStart, chartWindowStart + CHART_WINDOW_SIZE);
+    indexOffset = chartWindowStart;
+  }
 
   const wrapRect = chartWrap.getBoundingClientRect();
   const trackHeight = Math.max(Math.round(wrapRect.height) - CHART_BASELINE_OFFSET, 140);
   const scrollVisibleWidth = Math.round(wrapRect.width) - CHART_GUTTER_WIDTH;
-  const step = chartMode === "recent"
-    ? scrollVisibleWidth / displayRecords.length
-    : Math.max(CHART_MIN_STEP, scrollVisibleWidth / displayRecords.length);
-  // A few px of "overflow" from rounding/clamping isn't worth scrolling for —
-  // treat anything under CHART_OVERFLOW_TOLERANCE as a perfect fit so the
-  // arrows don't appear (and can't cause a jarring near-zero-range jump).
-  const rawContentWidth = step * displayRecords.length;
-  const overflowing = rawContentWidth > scrollVisibleWidth + CHART_OVERFLOW_TOLERANCE;
-  const contentWidth = overflowing ? rawContentWidth : scrollVisibleWidth;
-  lastChartVisibleWidth = scrollVisibleWidth;
+  const step = displayRecords.length > 0 ? scrollVisibleWidth / displayRecords.length : scrollVisibleWidth;
 
-  track.style.width = contentWidth + "px";
+  track.style.width = scrollVisibleWidth + "px";
   track.style.height = trackHeight + "px";
+  scrollWrap.scrollLeft = 0; // content always fits exactly now — nothing to scroll
 
   const baseline = document.createElement("div");
   baseline.className = "chartBaseline";
@@ -322,8 +333,7 @@ function renderProgressChart() {
 
   // Gridlines + their matching fixed y-axis numbers, every 10%. axisNums
   // shares the exact same top/bottom box as the track, so a number's
-  // "bottom" offset lines up with its gridline even while the track
-  // itself scrolls horizontally underneath.
+  // "bottom" offset lines up with its gridline.
   for (let k = 0; k <= 10; k++) {
     const bottomPx = CHART_BASELINE_OFFSET + (k / 10) * usableHeight;
 
@@ -391,11 +401,13 @@ function renderProgressChart() {
     track.appendChild(attemptLabel);
   });
 
-  if (arrowLeft) arrowLeft.style.display = overflowing ? "flex" : "none";
-  if (arrowRight) arrowRight.style.display = overflowing ? "flex" : "none";
-
-  // Start scrolled to the most recent attempt so it's visible by default
-  scrollWrap.scrollLeft = scrollWrap.scrollWidth;
+  // Arrows page through history a full window at a time — only shown in
+  // "all" mode, and only on the side where there's actually more to see.
+  const hasHistory = chartMode === "all" && allRecords.length > CHART_WINDOW_SIZE;
+  const canGoOlder = hasHistory && chartWindowStart > 0;
+  const canGoNewer = hasHistory && (chartWindowStart + CHART_WINDOW_SIZE) < allRecords.length;
+  if (arrowLeft) arrowLeft.style.display = canGoOlder ? "flex" : "none";
+  if (arrowRight) arrowRight.style.display = canGoNewer ? "flex" : "none";
 }
 
 // Shows a small tooltip with the exact date/time above a tapped point
@@ -854,7 +866,7 @@ window.onload = () => {
     rnoBtn.addEventListener('touchstart', handleRno);
     const handleBno = () => {
         requestaedaud.play();
-      could_you_see_breathing.pause();
+        could_you_see_breathing.pause();
         could_you_see_breathing.currentTime = 0;
         checkbreathingq.style.display = "none";
         requestaed.style.display = "flex";
@@ -1139,6 +1151,7 @@ window.onload = () => {
         // Always start on the "recent" (zoomed-in) view for a predictable
         // default each time the screen opens.
         chartMode = "recent";
+        chartWindowStart = Infinity;
         if (progressChartModeRecent) progressChartModeRecent.classList.add("active");
         if (progressChartModeAll) progressChartModeAll.classList.remove("active");
         // Defer to the next frame so the browser has definitely laid out
@@ -1148,6 +1161,7 @@ window.onload = () => {
 
     const setChartMode = (mode) => {
         chartMode = mode;
+        chartWindowStart = Infinity; // switching modes always starts back at the latest window
         if (progressChartModeRecent) progressChartModeRecent.classList.toggle("active", mode === "recent");
         if (progressChartModeAll) progressChartModeAll.classList.toggle("active", mode === "all");
         renderProgressChart();
@@ -1200,22 +1214,25 @@ window.onload = () => {
         progressClearBtn.addEventListener('touchstart', clearProgress);
     }
 
-    // Left/right nudge arrows scroll the chart by roughly one screenful,
-    // based on the chart's actual current visible width — not a fixed
-    // pixel jump, which could badly overshoot a barely-scrollable chart.
-    if (progressChartArrowLeft && progressChartScroll) {
-        const scrollLeftHandler = () => {
-            progressChartScroll.scrollBy({ left: -(lastChartVisibleWidth || CHART_ATTEMPT_STEP * 2) * 0.85, behavior: 'smooth' });
+    // Left/right arrows page through history a full window at a time by
+    // re-rendering with a new chartWindowStart — no native scrolling
+    // involved, so there's no scroll position that can end up stale or
+    // showing blank space.
+    if (progressChartArrowLeft) {
+        const goOlder = () => {
+            chartWindowStart = Math.max(0, chartWindowStart - CHART_WINDOW_SIZE);
+            renderProgressChart();
         };
-        progressChartArrowLeft.addEventListener('click', scrollLeftHandler);
-        progressChartArrowLeft.addEventListener('touchstart', scrollLeftHandler);
+        progressChartArrowLeft.addEventListener('click', goOlder);
+        progressChartArrowLeft.addEventListener('touchstart', goOlder);
     }
-    if (progressChartArrowRight && progressChartScroll) {
-        const scrollRightHandler = () => {
-            progressChartScroll.scrollBy({ left: (lastChartVisibleWidth || CHART_ATTEMPT_STEP * 2) * 0.85, behavior: 'smooth' });
+    if (progressChartArrowRight) {
+        const goNewer = () => {
+            chartWindowStart = chartWindowStart + CHART_WINDOW_SIZE;
+            renderProgressChart();
         };
-        progressChartArrowRight.addEventListener('click', scrollRightHandler);
-        progressChartArrowRight.addEventListener('touchstart', scrollRightHandler);
+        progressChartArrowRight.addEventListener('click', goNewer);
+        progressChartArrowRight.addEventListener('touchstart', goNewer);
     }
 
     const handleNextAmb = () => {
@@ -1410,7 +1427,7 @@ function draw() {
     if (listeningForResponse) {
         let vol = mic.getLevel();
         console.log("Volume:", vol);
-        if (vol > 0.3) {
+        if (vol > 0.15) {
             console.log("hi");
             listeningForResponse = false;
             clearTimeout(responseTimeout);
@@ -1454,6 +1471,8 @@ function mousePressed() {
             let calculatedBPM = 60000 / interval;
             bpm = calculatedBPM;
             console.log(bpm);
+            bpmSum += calculatedBPM;
+            bpmSampleCount += 1;
         }
         lastTouchTime = now;
         handle_live();
@@ -1461,7 +1480,7 @@ function mousePressed() {
 }
 function playScreen() {
     image(playimg, width / 2, height / 2);
-    //image(heartimg, width * 0.9, height * 0.08);
+    image(heartimg, width * 0.9, height * 0.08);
     push();
     noStroke();
     fill("#EEEEEE");
@@ -1689,6 +1708,8 @@ function reset() {
     progress = 0;
     angle = 0;
     bpm = 0;
+    bpmSum = 0;
+    bpmSampleCount = 0;
     lastTouchTime = 0;
     lastTouchElapsed = 0;
     pressed_time = 0;
