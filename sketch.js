@@ -19,9 +19,8 @@ const scriptURL = "https://script.google.com/macros/s/AKfycbxNVQSYjwBKOwIT8stzs-
 let sessionLogged = false;
 // progress tracking (compression score history, saved to localStorage)
 let scoreLoggedForAttempt = false;  // guards against logging the same attempt multiple times
-const CHART_WINDOW_SIZE = 7;        // number of attempts shown at once, in both "recent" and "all" (paged) views
+const CHART_WINDOW_SIZE = 7;        // number of attempts shown in "recent" (zoomed-in) mode
 let chartMode = "recent";           // "recent" | "all" — toggled by the chart's view buttons
-let chartWindowStart = Infinity;    // first index shown in "all" mode; clamped in renderProgressChart, so Infinity always means "show the latest window"
 const PROGRESS_NAME = "Friend";     // this version has no name entry, so all attempts are logged under one bucket
 // play screen
 let cheekOpacity = 40;
@@ -287,22 +286,18 @@ function renderProgressChart() {
   if (axisNums) axisNums.style.display = "block";
   if (noDataEl) noDataEl.style.display = "none";
 
-  // Both views show a fixed-size window of CHART_WINDOW_SIZE attempts,
-  // spaced to exactly fill the visible width. "recent" always shows the
-  // latest window. "all" pages through history via the arrows, moving
-  // chartWindowStart a full window at a time — never native scrolling —
-  // so there's no scroll position to end up stale, mismatched, or
-  // showing blank space: each render deterministically picks and lays
-  // out exactly the attempts it displays.
+  // "recent" (zoomed in) always shows just the latest CHART_WINDOW_SIZE
+  // attempts. "all" (zoomed out) shows literally every attempt, spread
+  // evenly across the same width — points naturally get closer together
+  // as more attempts accumulate, so the whole history is always visible
+  // at a glance with no paging or scrolling needed.
   let displayRecords, indexOffset;
   if (chartMode === "recent") {
     displayRecords = allRecords.slice(-CHART_WINDOW_SIZE);
     indexOffset = allRecords.length - displayRecords.length;
   } else {
-    const maxStart = Math.max(0, allRecords.length - CHART_WINDOW_SIZE);
-    chartWindowStart = Math.min(Math.max(chartWindowStart, 0), maxStart);
-    displayRecords = allRecords.slice(chartWindowStart, chartWindowStart + CHART_WINDOW_SIZE);
-    indexOffset = chartWindowStart;
+    displayRecords = allRecords;
+    indexOffset = 0;
   }
 
   const wrapRect = chartWrap.getBoundingClientRect();
@@ -378,6 +373,14 @@ function renderProgressChart() {
     track.appendChild(seg);
   }
 
+  // As more attempts get packed into the same width, shrink the dots so
+  // neighbors don't overlap, down to a small legible floor. Below a
+  // certain spacing, per-point attempt numbers would just overlap into
+  // noise, so they're dropped — tapping a point still reveals its exact
+  // attempt via the tooltip.
+  const pointSize = Math.max(6, Math.min(16, Math.round(step - 6)));
+  const showLabels = step >= 20;
+
   points.forEach((p, i) => {
     const r = p.record;
     const diff = Math.abs(r.max - r.score);
@@ -387,27 +390,32 @@ function renderProgressChart() {
     point.className = "chartPoint";
     point.style.left = p.x + "px";
     point.style.bottom = p.bottomPx + "px";
+    point.style.width = pointSize + "px";
+    point.style.height = pointSize + "px";
+    point.style.borderWidth = (pointSize <= 9 ? 1 : 2) + "px";
     point.style.background = color;
     const onTap = (e) => { e.preventDefault(); showChartTooltip(point, r); };
     point.addEventListener("click", onTap);
     point.addEventListener("touchend", onTap);
     track.appendChild(point);
 
-    const attemptLabel = document.createElement("div");
-    attemptLabel.className = "chartAttemptLabel";
-    attemptLabel.style.left = p.x + "px";
-    attemptLabel.style.bottom = "2px";
-    attemptLabel.textContent = indexOffset + i + 1; // real attempt number, not reset per view
-    track.appendChild(attemptLabel);
+    if (showLabels) {
+      const attemptLabel = document.createElement("div");
+      attemptLabel.className = "chartAttemptLabel";
+      attemptLabel.style.left = p.x + "px";
+      attemptLabel.style.bottom = "2px";
+      attemptLabel.textContent = indexOffset + i + 1; // real attempt number, not reset per view
+      track.appendChild(attemptLabel);
+    }
   });
 
   // Arrows page through history a full window at a time — only shown in
   // "all" mode, and only on the side where there's actually more to see.
-  const hasHistory = chartMode === "all" && allRecords.length > CHART_WINDOW_SIZE;
-  const canGoOlder = hasHistory && chartWindowStart > 0;
-  const canGoNewer = hasHistory && (chartWindowStart + CHART_WINDOW_SIZE) < allRecords.length;
-  if (arrowLeft) arrowLeft.style.display = canGoOlder ? "flex" : "none";
-  if (arrowRight) arrowRight.style.display = canGoNewer ? "flex" : "none";
+  // "All" mode always fits every attempt within the visible width (points
+  // just get smaller/closer as history grows), so there's never anything
+  // left to page through — the arrows stay hidden.
+  if (arrowLeft) arrowLeft.style.display = "none";
+  if (arrowRight) arrowRight.style.display = "none";
 }
 
 // Shows a small tooltip with the exact date/time above a tapped point
@@ -866,7 +874,7 @@ window.onload = () => {
     rnoBtn.addEventListener('touchstart', handleRno);
     const handleBno = () => {
         requestaedaud.play();
-        could_you_see_breathing.pause();
+      could_you_see_breathing.pause();
         could_you_see_breathing.currentTime = 0;
         checkbreathingq.style.display = "none";
         requestaed.style.display = "flex";
@@ -1151,7 +1159,6 @@ window.onload = () => {
         // Always start on the "recent" (zoomed-in) view for a predictable
         // default each time the screen opens.
         chartMode = "recent";
-        chartWindowStart = Infinity;
         if (progressChartModeRecent) progressChartModeRecent.classList.add("active");
         if (progressChartModeAll) progressChartModeAll.classList.remove("active");
         // Defer to the next frame so the browser has definitely laid out
@@ -1161,7 +1168,6 @@ window.onload = () => {
 
     const setChartMode = (mode) => {
         chartMode = mode;
-        chartWindowStart = Infinity; // switching modes always starts back at the latest window
         if (progressChartModeRecent) progressChartModeRecent.classList.toggle("active", mode === "recent");
         if (progressChartModeAll) progressChartModeAll.classList.toggle("active", mode === "all");
         renderProgressChart();
@@ -1212,27 +1218,6 @@ window.onload = () => {
         };
         progressClearBtn.addEventListener('click', clearProgress);
         progressClearBtn.addEventListener('touchstart', clearProgress);
-    }
-
-    // Left/right arrows page through history a full window at a time by
-    // re-rendering with a new chartWindowStart — no native scrolling
-    // involved, so there's no scroll position that can end up stale or
-    // showing blank space.
-    if (progressChartArrowLeft) {
-        const goOlder = () => {
-            chartWindowStart = Math.max(0, chartWindowStart - CHART_WINDOW_SIZE);
-            renderProgressChart();
-        };
-        progressChartArrowLeft.addEventListener('click', goOlder);
-        progressChartArrowLeft.addEventListener('touchstart', goOlder);
-    }
-    if (progressChartArrowRight) {
-        const goNewer = () => {
-            chartWindowStart = chartWindowStart + CHART_WINDOW_SIZE;
-            renderProgressChart();
-        };
-        progressChartArrowRight.addEventListener('click', goNewer);
-        progressChartArrowRight.addEventListener('touchstart', goNewer);
     }
 
     const handleNextAmb = () => {
@@ -1427,7 +1412,7 @@ function draw() {
     if (listeningForResponse) {
         let vol = mic.getLevel();
         console.log("Volume:", vol);
-        if (vol > 0.15) {
+        if (vol > 0.3) {
             console.log("hi");
             listeningForResponse = false;
             clearTimeout(responseTimeout);
@@ -1480,7 +1465,7 @@ function mousePressed() {
 }
 function playScreen() {
     image(playimg, width / 2, height / 2);
-    image(heartimg, width * 0.9, height * 0.08);
+    //image(heartimg, width * 0.9, height * 0.08);
     push();
     noStroke();
     fill("#EEEEEE");
