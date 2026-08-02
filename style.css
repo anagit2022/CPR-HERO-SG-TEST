@@ -583,7 +583,7 @@ display: flex; /* show first screen by default */
 /* Recent-7 / All toggle, sits between the score card and the chart */
 .progressChartModeToggle {
   position: absolute;
-  top: 36vh;
+  top: 39vh;
   left: 8vw;
   width: 84vw;
   max-width: 340px;
@@ -613,7 +613,7 @@ display: flex; /* show first screen by default */
 
 .progressChartWrap {
   position: absolute;
-  top: 42vh;
+  top: 45vh;
   left: 8vw;
   width: 84vw;
   max-width: 340px;
